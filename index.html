@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galgame: 甜点色的恋爱 (完整版)</title>
+    <style>
+        /* --- 样式表 --- */
+        :root { --pink: #FFC6D0; --blue: #AEEEEE; --text: #5c5c5c; }
+        body {
+            margin: 0; background: #fff0f5; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            font-family: "Microsoft YaHei", sans-serif; user-select: none;
+        }
+
+        /* 游戏主舞台 */
+        #game-stage {
+            width: 900px; height: 640px; background: #fff;
+            position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.1);
+            border-radius: 15px; overflow: hidden; border: 8px solid #fff;
+        }
+
+        /* 1. 背景层 */
+        #bg-layer {
+            position: absolute; width: 100%; height: 100%;
+            background-size: cover; background-position: center;
+            transition: opacity 0.5s;
+        }
+        .bg-school { background-image: linear-gradient(to bottom, #87CEFA, #E0FFFF); } /* 默认背景色，可换图 */
+        .bg-sunset { background-image: linear-gradient(to bottom, #FFDAB9, #FFFACD); }
+        .bg-night { background-image: linear-gradient(to bottom, #2c3e50, #4ca1af); }
+
+        /* 2. 立绘层 (核心修改：使用img标签) */
+        #char-layer {
+            position: absolute; bottom: 0; left: 50%;
+            transform: translateX(-50%); height: 90%;
+            pointer-events: none; transition: 0.3s;
+            display: none; /* 默认隐藏 */
+        }
+        #char-img {
+            height: 100%; width: auto;
+            filter: drop-shadow(0 0 10px rgba(255,255,255,0.5));
+        }
+
+        /* 3. UI层 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        
+        #dialogue-box {
+            position: absolute; bottom: 20px; left: 20px; right: 20px;
+            height: 180px; background: rgba(255, 255, 255, 0.95);
+            border: 4px solid var(--pink); border-radius: 20px;
+            padding: 25px; box-sizing: border-box;
+        }
+        #name-tag {
+            font-size: 22px; font-weight: bold; color: #ff8fab;
+            background: white; padding: 4px 20px; border-radius: 15px;
+            border: 2px solid var(--blue); display: inline-block; margin-bottom: 10px;
+        }
+        #text-content { font-size: 20px; line-height: 1.6; color: var(--text); }
+        
+        /* 状态栏 */
+        #status-bar {
+            position: absolute; top: 20px; left: 20px;
+            display: flex; gap: 15px;
+        }
+        .tag { background: white; padding: 5px 15px; border-radius: 20px; border: 2px solid var(--pink); color: var(--text); font-weight: bold; font-size: 14px;}
+
+        /* 4. 选项层 */
+        #option-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(5px);
+            z-index: 50; display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+        .opt-btn {
+            width: 60%; padding: 18px; margin: 10px;
+            background: white; border: 3px solid var(--blue); border-radius: 40px;
+            font-size: 20px; color: var(--text); font-weight: bold; cursor: pointer;
+            transition: 0.2s; text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .opt-btn:hover { background: var(--blue); color: white; transform: scale(1.05); }
+
+        /* 5. 点击遮罩 */
+        #click-mask {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 40; cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-stage">
+    <div id="bg-layer" class="bg-school"></div>
+
+    <div id="char-layer">
+        <img id="char-img" src="yui_normal.png" onerror="this.src='https://placehold.co/400x800/pink/white?text=Yui+Normal'">
+    </div>
+
+    <div id="ui-layer">
+        <div id="status-bar">
+            <div class="tag">📅 Day: <span id="day-disp">1</span></div>
+            <div class="tag">💖 好感度: <span id="love-disp">0</span></div>
+        </div>
+        <div id="dialogue-box">
+            <div id="name-tag">系统</div>
+            <div id="text-content">点击屏幕开始...</div>
+        </div>
+    </div>
+
+    <div id="click-mask" onclick="handleClick()"></div>
+
+    <div id="option-layer"></div>
+</div>
+
+<script>
+    /* --- 1. 游戏剧本数据 (Database) --- */
+    const script = {
+        // === 第一章：初遇 ===
+        "start": {
+            day: 1, bg: "bg-school", char: null, name: "我",
+            text: "高中二年级的春天。我在旧校舍后的樱花树下，捡到了一本遗落的素描本。",
+            next: "meet_1"
+        },
+        "meet_1": {
+            bg: "bg-school", char: "normal", name: "???",
+            text: "那、那个！请问...你有看到一本蓝色的本子吗？",
+            next: "meet_2"
+        },
+        "meet_2": {
+            bg: "bg-school", char: "normal", name: "我",
+            text: "转过身，一个气喘吁吁的女生正看着我。是隔壁班的结衣同学。",
+            next: "choice_1"
+        },
+        "choice_1": {
+            type: "choice",
+            options: [
+                { text: "直接还给她 (普通)", target: "r_normal" },
+                { text: "笑着问：画得很可爱哦 (心动)", target: "r_flirt" }
+            ]
+        },
+        "r_normal": {
+            bg: "bg-school", char: "normal", name: "结衣",
+            text: "谢、谢谢你！这对我真的很重要。",
+            action: g => g.love += 5,
+            next: "jump_to_mid" // 演示用，直接跳到中期
+        },
+        "r_flirt": {
+            bg: "bg-school", char: "love", // 使用害羞立绘
+            name: "结衣",
+            text: "诶？！你、你都看过了吗？呜...好害羞...",
+            action: g => g.love += 15,
+            next: "jump_to_mid"
+        },
+
+        // === 中期转场 ===
+        "jump_to_mid": {
+            bg: "bg-night", char: null, name: "系统",
+            text: "【时光飞逝...】 你们的关系逐渐拉近，经常一起在天台吃午饭。",
+            next: "conflict_start"
+        },
+
+        // === 第五章：小冲突/误会 ===
+        "conflict_start": {
+            day: 5, bg: "bg-sunset", char: "normal", name: "结衣",
+            text: "呐，听说...昨天放学你和校花一起走的？",
+            next: "conflict_choice"
+        },
+        "conflict_choice": {
+            type: "choice",
+            options: [
+                { text: "只是顺路碰到的 (解释)", target: "c_explain" },
+                { text: "怎么，吃醋了吗？ (调侃)", target: "c_tease" }
+            ]
+        },
+        "c_explain": {
+            bg: "bg-sunset", char: "normal", name: "结衣",
+            text: "是、是这样啊...我相信你。",
+            action: g => g.love += 10,
+            next: "jump_to_end"
+        },
+        "c_tease": {
+            bg: "bg-sunset", char: "love", name: "结衣",
+            text: "笨、笨蛋！谁吃醋了！...虽然...是有一点点不开心。",
+            action: g => g.love += 25, // 高风险高回报
+            next: "jump_to_end"
+        },
+
+        // === 终章判定 ===
+        "jump_to_end": {
+            bg: "bg-night", char: null, name: "系统",
+            text: "【数周后的烟火大会】 命运的时刻到来了...",
+            next: "check_ending" // 跳转到逻辑判定节点
+        },
+        
+        // === 逻辑判定节点 (不显示文本，只负责跳转) ===
+        "check_ending": {
+            type: "check",
+            condition: (g) => g.love >= 30, // 判定门槛
+            trueTarget: "end_true",    // 成功跳转
+            falseTarget: "end_normal"  // 失败跳转
+        },
+
+        // === 普通结局 ===
+        "end_normal": {
+            day: 10, bg: "bg-night", char: "normal", name: "结衣",
+            text: "今晚的烟花真美呢。谢谢你陪我，明天学校见吧！",
+            next: "fin_normal"
+        },
+        "fin_normal": {
+            bg: "bg-night", char: null, name: "结局",
+            text: "【Normal End：好朋友】 (好感度不足，未能触发告白)",
+            next: null
+        },
+
+        // === 真结局 (满好感触发) ===
+        "end_true": {
+            day: 10, bg: "bg-night", char: "love", name: "结衣",
+            text: "等等！...我、我有话想对你说！",
+            next: "confession_1"
+        },
+        "confession_1": {
+            bg: "bg-night", char: "love", name: "结衣",
+            text: "虽然一开始只是偶然...但现在，我想一直和你在一起！",
+            next: "confession_2"
+        },
+        "confession_2": {
+            bg: "bg-night", char: "love", name: "结衣",
+            text: "（她紧紧抓住了你的衣袖，脸红得像熟透的苹果）...喜欢你。",
+            next: "fin_true"
+        },
+        "fin_true": {
+            bg: "bg-night", char: "love", name: "结局",
+            text: "✨【Happy End：樱花色的誓言】✨ 恭喜达成完美结局！",
+            next: null
+        }
+    };
+
+    /* --- 2. 引擎逻辑 --- */
+    let gameState = { id: "start", love: 0, day: 1, typing: false };
+    const els = {
+        bg: document.getElementById('bg-layer'),
+        charLayer: document.getElementById('char-layer'),
+        charImg: document.getElementById('char-img'),
+        name: document.getElementById('name-tag'),
+        text: document.getElementById('text-content'),
+        opts: document.getElementById('option-layer'),
+        mask: document.getElementById('click-mask'),
+        day: document.getElementById('day-disp'),
+        love: document.getElementById('love-disp')
+    };
+    let timer;
+
+    // 初始化
+    render("start");
+
+    function handleClick() {
+        if (gameState.typing) {
+            finishType(script[gameState.id].text);
+            return;
+        }
+        let scene = script[gameState.id];
+        
+        // 如果是逻辑判定节点，自动执行
+        if (scene.type === "check") return; 
+
+        if (scene.type === "choice" || !scene.next) return;
+        render(scene.next);
+    }
+
+    function render(id) {
+        gameState.id = id;
+        let scene = script[id];
+
+        // 1. 处理好感度/天数更新
+        if (scene.action) scene.action(gameState);
+        if (scene.day) gameState.day = scene.day;
+        updateUI();
+
+        // 2. 特殊节点：条件判定 (Check)
+        if (scene.type === "check") {
+            let nextId = scene.condition(gameState) ? scene.trueTarget : scene.falseTarget;
+            render(nextId); // 递归调用，直接跳到下一幕
+            return;
+        }
+
+        // 3. 场景渲染
+        if (scene.bg) els.bg.className = scene.bg;
+        
+        // 立绘切换逻辑
+        if (scene.char) {
+            els.charLayer.style.display = "block";
+            // 这里实现了图片切换：如果是 "love" 就用 yui_love.png
+            let imgSrc = scene.char === "love" ? "yui_love.png" : "yui_normal.png";
+            // 还有防呆设计：如果是占位符，就切换占位符的颜色
+            let placeholdSrc = scene.char === "love" 
+                ? "https://placehold.co/400x800/ff99aa/white?text=Yui+Shy"
+                : "https://placehold.co/400x800/AEEEEE/white?text=Yui+Normal";
+            
+            // 尝试加载本地图片，如果失败（onerror）会自动加载上面的 placeholdSrc
+            els.charImg.src = imgSrc;
+            els.charImg.onerror = function() { this.src = placeholdSrc; };
+            
+        } else {
+            els.charLayer.style.display = "none";
+        }
+
+        // 4. 文本与选项
+        if (scene.type === "choice") {
+            els.opts.innerHTML = "";
+            els.opts.style.display = "flex";
+            els.mask.style.display = "none"; // 选项时禁用背景点击
+            scene.options.forEach(o => {
+                let btn = document.createElement("div");
+                btn.className = "opt-btn";
+                btn.innerText = o.text;
+                btn.onclick = () => {
+                    els.mask.style.display = "block";
+                    render(o.target);
+                };
+                els.opts.appendChild(btn);
+            });
+        } else {
+            els.opts.style.display = "none";
+            els.name.innerText = scene.name;
+            typeText(scene.text);
+        }
+    }
+
+    function updateUI() {
+        els.love.innerText = gameState.love;
+        els.day.innerText = gameState.day;
+        // 简单的好感度颜色变化
+        els.love.style.color = gameState.love > 20 ? "red" : "#ff8fab";
+    }
+
+    function typeText(str) {
+        gameState.typing = true;
+        els.text.innerHTML = "";
+        let i = 0;
+        clearInterval(timer);
+        timer = setInterval(() => {
+            if (i < str.length) {
+                els.text.innerHTML += str.charAt(i);
+                i++;
+            } else {
+                finishType(str);
+            }
+        }, 30);
+    }
+
+    function finishType(str) {
+        clearInterval(timer);
+        els.text.innerHTML = str;
+        gameState.typing = false;
+    }
+
+</script>
+</body>
+</html>
